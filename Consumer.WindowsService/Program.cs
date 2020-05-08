@@ -1,5 +1,4 @@
 ﻿using MassTransit;
-using MG.EventBus.Components.Consumers;
 using MG.EventBus.Startup;
 using SimpleInjector;
 using Topshelf;

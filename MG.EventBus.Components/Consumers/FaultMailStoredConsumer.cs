@@ -11,8 +11,9 @@ namespace MG.EventBus.Components.Consumers
 		{
 			// error handling here
 			//	logging, changing status email on DB, etc.
+
 			await Console.Out.WriteLineAsync($">>> Consuming Fault: ID={context.Message.Message.Id}, Msg='{context.Message.Message.Message}', {context.Message.Exceptions[0].Message}");
-			await Console.Out.WriteLineAsync($@"\t\t{context.Message.Exceptions[0].Message}");
+			await Console.Out.WriteLineAsync($"Exception: {context.Message.Exceptions[0].Message}");
 		}
 	}
 }
