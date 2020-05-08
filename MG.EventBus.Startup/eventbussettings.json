@@ -1,0 +1,9 @@
+{
+	"CloudAMQP": {
+		"UserName": "oklnbiuq",
+		"Password": "OD0mXJWCHtbXBt8JADrigXSlebXNORMA",
+		"VirtualHost": "oklnbiuq",
+		"HostName": "barnacle.rmq.cloudamqp.com",
+		"Port": "5672"
+	}
+}

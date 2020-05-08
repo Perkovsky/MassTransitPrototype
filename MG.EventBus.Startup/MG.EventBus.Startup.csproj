@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MassTransit" Version="6.2.5" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="6.2.5" />
+    <PackageReference Include="MassTransit.SimpleInjector" Version="6.2.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MG.EventBus.Components\MG.EventBus.Components.csproj" />
+    <ProjectReference Include="..\MG.IntegrationSystems.Tools\MG.IntegrationSystems.Tools.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="eventbussettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
