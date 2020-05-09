@@ -46,7 +46,7 @@ namespace Producer
 		//		if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
 		//			break;
 
-		//		bus.Publish<MailStored>(new
+		//		bus.Publish<SendMail>(new
 		//		{
 		//			CreatedDate = DateTime.UtcNow,
 		//			Message = msg
@@ -65,7 +65,10 @@ namespace Producer
 
 		static void Main(string[] args)
 		{
-			var producer = container.GetInstance<IPublishEndpoint>();
+			var publisher = container.GetInstance<IPublishEndpoint>();
+			var sendEndpointProvider = container.GetInstance<ISendEndpointProvider>();
+			var sender = sendEndpointProvider.GetSendMailSendEndpoint();
+
 			var random = new Random();
 			Console.WriteLine("-- PRODUCER --");
 			Console.WriteLine("Enter message (or quit to exit)..." + Environment.NewLine);
@@ -77,14 +80,14 @@ namespace Producer
 				if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
 					break;
 
-				/*await*/ producer.Publish<MailStored>(new
+				/*await*/ sender.Send<SendMail>(new
 				{
 					Id = random.Next(1, int.MaxValue),
 					CreatedDate = DateTime.UtcNow,
 					Message = msg
 				});
 
-				producer.Publish<TestSomeActionExecuted>(new
+				publisher.Publish<TestSomeActionExecuted>(new
 				{
 					Id = random.Next(1, int.MaxValue),
 					CreatedDate = DateTime.UtcNow,

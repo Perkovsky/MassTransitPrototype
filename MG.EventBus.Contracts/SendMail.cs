@@ -2,7 +2,7 @@
 
 namespace MG.EventBus.Contracts
 {
-	public interface MailStored
+	public interface SendMail
 	{
 		int Id { get; }
 		DateTime CreatedDate { get; }

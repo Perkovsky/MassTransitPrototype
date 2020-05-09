@@ -12,7 +12,7 @@ namespace Consumer.WindowsService
         static Program()
         {
             container = new Container();
-            container.RegisterMailStoredConsumerDependencies();
+            container.RegisterSendMailConsumerDependencies();
             container.Verify();
         }
 
@@ -34,7 +34,7 @@ namespace Consumer.WindowsService
 
         //            cfg.ReceiveEndpoint(/*"EmailQueue", */ec =>
         //            {
-        //                ec.Consumer<MG.EventBus.Components.Consumers.MailStoredConsumer>();
+        //                ec.Consumer<MG.EventBus.Components.Consumers.SendMailConsumer>();
         //                //ec.Consumer<MG.EventBus.Components.Consumers.TestSomeActionExecutedConsumer>();
         //            });
         //        });

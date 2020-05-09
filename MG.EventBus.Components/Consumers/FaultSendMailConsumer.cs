@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 
 namespace MG.EventBus.Components.Consumers
 {
-	public class FaultMailStoredConsumer : IConsumer<Fault<MailStored>>
+	public class FaultSendMailConsumer : IConsumer<Fault<SendMail>>
 	{
-		public async Task Consume(ConsumeContext<Fault<MailStored>> context)
+		public async Task Consume(ConsumeContext<Fault<SendMail>> context)
 		{
 			// error handling here
 			//	logging, changing status email on DB, etc.
