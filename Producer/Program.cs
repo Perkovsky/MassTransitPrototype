@@ -2,6 +2,7 @@
 using MG.EventBus.Components.Services;
 using MG.EventBus.Contracts;
 using MG.EventBus.Startup;
+using Microsoft.Extensions.DependencyInjection;
 using SimpleInjector;
 using SimpleInjector.Lifestyles;
 using System;
@@ -10,13 +11,26 @@ namespace Producer
 {
 	class Program
 	{
-		static readonly Container container;
+		static readonly Container _container;
+		static readonly ServiceProvider _serviceProvider;
 
 		static Program()
 		{
-			container = new Container();
-			container.RegisterEventBusProducerDependencies();
-			container.Verify();
+			#region SimpleInjector
+
+			//_container = new Container();
+			//_container.RegisterEventBusProducerDependencies();
+			//_container.Verify();
+
+			#endregion
+
+			#region Microsoft DependencyInjection
+
+			_serviceProvider = new ServiceCollection()
+				.RegisterEventBusProducerDependencies()
+				.BuildServiceProvider();
+
+			#endregion
 		}
 
 		#region Testing without DI
@@ -67,36 +81,38 @@ namespace Producer
 
 		static void Main(string[] args)
 		{
-			using (AsyncScopedLifestyle.BeginScope(container))
-			{ 
-				var producer = container.GetInstance<IEventBusProducerService>();
+			//using (AsyncScopedLifestyle.BeginScope(container))
+			//{ 
+			//	var producer = _container.GetInstance<IEventBusProducerService>();
 
-				var random = new Random();
-				Console.WriteLine("-- PRODUCER --");
-				Console.WriteLine("Enter message (or quit to exit)..." + Environment.NewLine);
+			var producer = _serviceProvider.GetService<IEventBusProducerService>();
+				
+			var random = new Random();
+			Console.WriteLine("-- PRODUCER --");
+			Console.WriteLine("Enter message (or quit to exit)..." + Environment.NewLine);
 
-				while (true)
+			while (true)
+			{
+				Console.Write("> ");
+				string msg = Console.ReadLine();
+				if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
+					break;
+
+				producer.Send<SendMail, SendMailConsumer>(new
 				{
-					Console.Write("> ");
-					string msg = Console.ReadLine();
-					if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
-						break;
+					Id = random.Next(1, int.MaxValue),
+					CreatedDate = DateTime.UtcNow,
+					Message = msg
+				});
 
-					producer.Send<SendMail, SendMailConsumer>(new
-					{
-						Id = random.Next(1, int.MaxValue),
-						CreatedDate = DateTime.UtcNow,
-						Message = msg
-					});
-
-					producer.Publish<TestSomeActionExecuted>(new
-					{
-						Id = random.Next(1, int.MaxValue),
-						CreatedDate = DateTime.UtcNow,
-						Message = msg + "--test"
-					});
-				}
+				producer.Publish<TestSomeActionExecuted>(new
+				{
+					Id = random.Next(1, int.MaxValue),
+					CreatedDate = DateTime.UtcNow,
+					Message = msg + "--test"
+				});
 			}
+			//}
 		}
 	}
 }
