@@ -5,5 +5,10 @@
 		"VirtualHost": "oklnbiuq",
 		"HostName": "barnacle.rmq.cloudamqp.com",
 		"Port": "5672"
+	},
+	"AmazonMQ": {
+		"UserName": "admin",
+		"Password": "admin",
+		"HostName": "localhost"
 	}
 }
