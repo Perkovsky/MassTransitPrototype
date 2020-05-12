@@ -2,30 +2,18 @@
 using MassTransit;
 using MassTransit.Definition;
 using MG.EventBus.Components.Consumers;
+using MG.EventBus.Components.Services;
+using MG.EventBus.Components.Services.Impl;
 using MG.IntegrationSystems.Tools;
 using SimpleInjector;
 using SimpleInjector.Lifestyles;
 using System;
 using System.Linq;
-using System.Threading.Tasks;
 
 namespace MG.EventBus.Startup
 {
 	public static class EventBusDependencyExtensions
 	{
-		private static string SendMailQueueName => KebabCaseEndpointNameFormatter.Instance.Consumer<SendMailConsumer>();
-		private static Uri SendMailQueueUri => new Uri($"queue:{SendMailQueueName}");
-
-		public static async Task<ISendEndpoint> GetSendMailSendEndpointAsync(this ISendEndpointProvider provider)
-		{
-			return await provider.GetSendEndpoint(SendMailQueueUri);
-		}
-
-		public static ISendEndpoint GetSendMailSendEndpoint(this ISendEndpointProvider provider)
-		{
-			return provider.GetSendMailSendEndpointAsync().Result;
-		}
-
 		/// <summary>
 		/// CloudAMQP Dependency Registration Extension Method: Producer and Consumers
 		/// </summary>
@@ -46,6 +34,7 @@ namespace MG.EventBus.Startup
 			string password = @config["CloudAMQP:Password"];
 
 			container.Options.DefaultScopedLifestyle = new AsyncScopedLifestyle();
+			container.Register<IEndpointNameFormatter>(() => KebabCaseEndpointNameFormatter.Instance, Lifestyle.Singleton);
 
 			container.AddMassTransit(x =>
 			{
@@ -80,11 +69,13 @@ namespace MG.EventBus.Startup
 		public static void RegisterEventBusProducerDependencies(this Container container)
 		{
 			container.RegisterCloudAMQPDependencies();
+			container.Register<IEventBusProducerService, EventBusProducerService>(Lifestyle.Scoped);
 		}
 
 		public static void RegisterSendMailConsumerDependencies(this Container container) 
 		{
-			container.RegisterCloudAMQPDependencies(SendMailQueueName, typeof(SendMailConsumer), typeof(FaultSendMailConsumer));
+			var queue = KebabCaseEndpointNameFormatter.Instance.Consumer<SendMailConsumer>();
+			container.RegisterCloudAMQPDependencies(queue, typeof(SendMailConsumer), typeof(FaultSendMailConsumer));
 		}
 
 		public static void RegisterTestSomeActionExecutedConsumerDependencies(this Container container)

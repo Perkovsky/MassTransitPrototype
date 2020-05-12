@@ -1,7 +1,9 @@
-﻿using MassTransit;
+﻿using MG.EventBus.Components.Consumers;
+using MG.EventBus.Components.Services;
 using MG.EventBus.Contracts;
 using MG.EventBus.Startup;
 using SimpleInjector;
+using SimpleInjector.Lifestyles;
 using System;
 
 namespace Producer
@@ -65,34 +67,35 @@ namespace Producer
 
 		static void Main(string[] args)
 		{
-			var publisher = container.GetInstance<IPublishEndpoint>();
-			var sendEndpointProvider = container.GetInstance<ISendEndpointProvider>();
-			var sender = sendEndpointProvider.GetSendMailSendEndpoint();
+			using (AsyncScopedLifestyle.BeginScope(container))
+			{ 
+				var producer = container.GetInstance<IEventBusProducerService>();
 
-			var random = new Random();
-			Console.WriteLine("-- PRODUCER --");
-			Console.WriteLine("Enter message (or quit to exit)..." + Environment.NewLine);
+				var random = new Random();
+				Console.WriteLine("-- PRODUCER --");
+				Console.WriteLine("Enter message (or quit to exit)..." + Environment.NewLine);
 
-			while (true)
-			{
-				Console.Write("> ");
-				string msg = Console.ReadLine();
-				if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
-					break;
-
-				/*await*/ sender.Send<SendMail>(new
+				while (true)
 				{
-					Id = random.Next(1, int.MaxValue),
-					CreatedDate = DateTime.UtcNow,
-					Message = msg
-				});
+					Console.Write("> ");
+					string msg = Console.ReadLine();
+					if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
+						break;
 
-				publisher.Publish<TestSomeActionExecuted>(new
-				{
-					Id = random.Next(1, int.MaxValue),
-					CreatedDate = DateTime.UtcNow,
-					Message = msg + "--test"
-				});
+					producer.Send<SendMail, SendMailConsumer>(new
+					{
+						Id = random.Next(1, int.MaxValue),
+						CreatedDate = DateTime.UtcNow,
+						Message = msg
+					});
+
+					producer.Publish<TestSomeActionExecuted>(new
+					{
+						Id = random.Next(1, int.MaxValue),
+						CreatedDate = DateTime.UtcNow,
+						Message = msg + "--test"
+					});
+				}
 			}
 		}
 	}
