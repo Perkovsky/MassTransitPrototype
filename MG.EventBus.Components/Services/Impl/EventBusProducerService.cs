@@ -1,5 +1,6 @@
 ﻿using MassTransit;
-using MassTransit.Definition;
+using MG.EventBus.Components.Helpers;
+using MG.EventBus.Components.Models;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,17 +18,6 @@ namespace MG.EventBus.Components.Services.Impl
 			_sendEndpointProvider = sendEndpointProvider ?? throw new ArgumentNullException(nameof(sendEndpointProvider));
 		}
 
-		#region Private Methods
-
-		private Uri GetQueueUri<T>()
-			where T : class, IConsumer
-		{
-			string queueName = KebabCaseEndpointNameFormatter.Instance.Consumer<T>();
-			return new Uri($"queue:{queueName}");
-		}
-
-		#endregion
-
 		public Task Publish<T>(object values)
 			where T : class
 		{
@@ -40,18 +30,18 @@ namespace MG.EventBus.Components.Services.Impl
 			await _publishEndpoint.Publish<T>(values, cancellationToken);
 		}
 
-		public Task Send<TContract, TConsumer>(object values)
+		public Task Send<TContract, TConsumer>(object values, QueuePriority priority = QueuePriority.Normal)
 			where TContract : class
 			where TConsumer : class, IConsumer<TContract>
 		{
-			return SendAsync<TContract, TConsumer>(values);
+			return SendAsync<TContract, TConsumer>(values, priority);
 		}
 
-		public async Task SendAsync<TContract, TConsumer>(object values, CancellationToken cancellationToken = default)
+		public async Task SendAsync<TContract, TConsumer>(object values, QueuePriority priority = QueuePriority.Normal, CancellationToken cancellationToken = default)
 			where TContract : class
 			where TConsumer : class, IConsumer<TContract>
 		{
-			var endpoint = await _sendEndpointProvider.GetSendEndpoint(GetQueueUri<TConsumer>());
+			var endpoint = await _sendEndpointProvider.GetSendEndpoint(QueueHelper.GetQueueUri<TConsumer>(priority));
 			await endpoint.Send<TContract>(values);
 		}
 	}
