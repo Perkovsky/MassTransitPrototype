@@ -41,7 +41,7 @@ namespace MG.EventBus.Startup
 				if (isConsumer)
 					x.AddConsumers(consumers);
 
-				x.AddBus(() => Bus.Factory.CreateUsingRabbitMq(cfg =>
+				x.AddBus(p => Bus.Factory.CreateUsingRabbitMq(cfg =>
 				{
 					var host = cfg.Host(new Uri($@"rabbitmq://{hostName}:{port}/{vhost}/"), h =>
 					{
@@ -59,7 +59,7 @@ namespace MG.EventBus.Startup
 						cfg.ReceiveEndpoint(queue, ec =>
 						{
 							ec.UseMessageRetry(rp => rp.Exponential(5, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(5)));
-							ec.ConfigureConsumers(container);
+							ec.ConfigureConsumers(p);
 						});
 					}
 				}));

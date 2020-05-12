@@ -5,9 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MassTransit" Version="6.2.5" />
-    <PackageReference Include="MassTransit.RabbitMQ" Version="6.2.5" />
-    <PackageReference Include="MassTransit.SimpleInjector" Version="6.2.5" />
+    <PackageReference Include="MassTransit" Version="6.3.1" />
+    <PackageReference Include="MassTransit.Extensions.DependencyInjection" Version="6.3.1" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="6.3.1" />
+    <PackageReference Include="MassTransit.SimpleInjector" Version="6.3.1" />
   </ItemGroup>
 
   <ItemGroup>
