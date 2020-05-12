@@ -29,7 +29,6 @@ namespace Consumer.WindowsService
 
 		public bool Start()
 		{
-			//return StartAsync(new CancellationToken()).Result;
 			Console.WriteLine("Listening Event Bus commands...");
 			_bus.Start();
 			return true;
@@ -37,7 +36,6 @@ namespace Consumer.WindowsService
 
 		public void Stop()
 		{
-			//StopAsync(new CancellationToken());
 			_bus.Stop();
 		}
 
