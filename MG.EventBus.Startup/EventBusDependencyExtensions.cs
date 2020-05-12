@@ -24,6 +24,22 @@ namespace MG.EventBus.Startup
 	{
 		#region Private Methods
 
+		private static Container RegisterBrokerDependencies(this Container container, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		{
+			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
+
+			container.RegisterCloudAMQPDependencies(queue, canUsePriority, consumers);
+			return container;
+		}
+
+		private static IServiceCollection RegisterBrokerDependencies(this IServiceCollection services, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		{
+			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
+
+			services.RegisterCloudAMQPDependencies(queue, canUsePriority, consumers);
+			return services;
+		}
+
 		private static void RetryPolicy(IRetryConfigurator retry)
 		{
 			retry.Exponential(5, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(5));
@@ -184,21 +200,21 @@ namespace MG.EventBus.Startup
 
 		public static Container RegisterEventBusProducerDependencies(this Container container)
 		{
-			container.RegisterCloudAMQPDependencies()
+			container.RegisterBrokerDependencies()
 				.Register<IEventBusProducerService, EventBusProducerService>(Lifestyle.Scoped);
 			return container;
 		}
 
 		public static IServiceCollection RegisterEventBusProducerDependencies(this IServiceCollection services)
 		{
-			services.RegisterCloudAMQPDependencies()
+			services.RegisterBrokerDependencies()
 				.AddScoped<IEventBusProducerService, EventBusProducerService>();
 			return services;
 		}
 
 		public static Container RegisterSendMailConsumerDependencies(this Container container) 
 		{
-			container.RegisterCloudAMQPDependencies(
+			container.RegisterBrokerDependencies(
 				queue: QueueHelper.GetQueueName<SendMailConsumer>(),
 				//canUsePriority: true,
 				consumers: new Type[] { typeof(SendMailConsumer), typeof(FaultSendMailConsumer) }
@@ -208,7 +224,7 @@ namespace MG.EventBus.Startup
 
 		public static Container RegisterTestSomeActionExecutedConsumerDependencies(this Container container)
 		{
-			container.RegisterCloudAMQPDependencies(
+			container.RegisterBrokerDependencies(
 				queue: QueueHelper.GetQueueName<TestSomeActionExecutedConsumer>(),
 				consumers: typeof(TestSomeActionExecutedConsumer)
 			);
