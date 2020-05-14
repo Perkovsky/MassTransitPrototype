@@ -51,7 +51,7 @@ namespace Consumer.ConsoleApp
 		{
 			var bus = container.GetInstance<IBusControl>();
 			bus.Start();
-			Console.WriteLine("Listening test some commands...");
+			Console.WriteLine("Listening test some events... Press any key to exit");
 			Console.ReadKey();
 			bus.Stop();
 		}

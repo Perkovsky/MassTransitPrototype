@@ -14,7 +14,6 @@ using MG.EventBus.Startup.Models;
 using MG.IntegrationSystems.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using RabbitMQ.Client.Events;
 using SimpleInjector;
 using SimpleInjector.Lifestyles;
 using System;
@@ -31,7 +30,7 @@ namespace MG.EventBus.Startup
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			container.RegisterCloudAMQPDependencies(receiveEndpoints);
+			container.RegisterDependencies(Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, AmazonMQConfigureBus);
 			return container;
 		}
 
@@ -39,7 +38,7 @@ namespace MG.EventBus.Startup
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			services.RegisterCloudAMQPDependencies(receiveEndpoints);
+			services.RegisterDependencies(Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, AmazonMQConfigureBus);
 			return services;
 		}
 
@@ -49,21 +48,27 @@ namespace MG.EventBus.Startup
 		}
 
 		private static Container RegisterDependencies(this Container container,
-			Action<ISimpleInjectorConfigurator, IEnumerable<ReceiveEndpointRegistration>> configure,
-			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
+			Action<ISimpleInjectorConfigurator, 
+				IEnumerable<ReceiveEndpointRegistration>,
+				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl>> configure,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl> configureBus)
 		{
 			container.Options.DefaultScopedLifestyle = new AsyncScopedLifestyle();
 			container.Register<IEndpointNameFormatter>(() => KebabCaseEndpointNameFormatter.Instance, Lifestyle.Singleton);
-			container.AddMassTransit(x => configure(x, receiveEndpoints));
+			container.AddMassTransit(x => configure(x, receiveEndpoints, configureBus));
 			return container;
 		}
 
 		private static IServiceCollection RegisterDependencies(this IServiceCollection services,
-			Action<IServiceCollectionConfigurator, IEnumerable<ReceiveEndpointRegistration>> configure,
-			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
+			Action<IServiceCollectionConfigurator,
+				IEnumerable<ReceiveEndpointRegistration>,
+				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl>> configure,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl> configureBus)
 		{
 			services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
-			services.AddMassTransit(x => configure(x, receiveEndpoints));
+			services.AddMassTransit(x => configure(x, receiveEndpoints, configureBus));
 			return services;
 		}
 
@@ -103,19 +108,22 @@ namespace MG.EventBus.Startup
 			}
 		}
 
-		#region CloudAMQP
-
-		/// <summary>
-		/// CloudAMQP Dependency Registration Extension Method: Producer and Consumers
-		/// </summary>
-		/// <param name="configurator">Configures the container registration: SimpleInjector, Microsoft DependencyInjection, etc.</param>
-		/// <param name="receiveEndpoints">ONLY FOR THE CONSUMERS. Receive Endpoints list</param>
-		private static void CloudAMQPConfigure<TConfigurator, TContainerContext>(TConfigurator configurator, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
-			where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
-			where TContainerContext : class
+		private static void Configure<TConfigurator, TContainerContext>(TConfigurator configurator,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl> configureBus)
+				where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
+				where TContainerContext : class
 		{
 			bool isConsumer = receiveEndpoints?.Any() ?? false;
 
+			if (isConsumer)
+				configurator.AddConsumers(GetConsumers(receiveEndpoints));
+
+			configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer));
+		}
+
+		private static IBusControl CloudAMQPConfigureBus(IRegistration registration, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints, bool isConsumer)
+		{
 			var config = ConfigurationHelper.GetConfiguration("eventbussettings.json");
 			string hostName = @config["CloudAMQP:HostName"];
 			string vhost = @config["CloudAMQP:VirtualHost"];
@@ -123,10 +131,7 @@ namespace MG.EventBus.Startup
 			string username = @config["CloudAMQP:UserName"];
 			string password = @config["CloudAMQP:Password"];
 
-			if (isConsumer)
-				configurator.AddConsumers(GetConsumers(receiveEndpoints));
-
-			configurator.AddBus(p => Bus.Factory.CreateUsingRabbitMq(cfg =>
+			return Bus.Factory.CreateUsingRabbitMq(cfg =>
 			{
 				var host = cfg.Host(new Uri($@"rabbitmq://{hostName}:{port}/{vhost}/"), h =>
 				{
@@ -140,46 +145,18 @@ namespace MG.EventBus.Startup
 				});
 
 				if (isConsumer)
-					cfg.AddReceiveEndpoints(p, receiveEndpoints);
-			}));
+					cfg.AddReceiveEndpoints(registration, receiveEndpoints);
+			});
 		}
 
-		private static Container RegisterCloudAMQPDependencies(this Container container, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
+		private static IBusControl AmazonMQConfigureBus(IRegistration registration, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints, bool isConsumer)
 		{
-			container.RegisterDependencies(CloudAMQPConfigure<ISimpleInjectorConfigurator, Container>, receiveEndpoints);
-			return container;
-		}
-
-		private static IServiceCollection RegisterCloudAMQPDependencies(this IServiceCollection services, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
-		{
-			services.RegisterDependencies(CloudAMQPConfigure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints);
-			return services;
-		}
-
-		#endregion
-
-		#region AmazonMQ
-
-		/// <summary>
-		/// AmazonMQ Dependency Registration Extension Method: Producer and Consumers
-		/// </summary>
-		/// <param name="configurator">Configures the container registration: SimpleInjector, Microsoft DependencyInjection, etc. </param>
-		/// <param name="receiveEndpoints">ONLY FOR THE CONSUMERS. Receive Endpoints list</param>
-		private static void AmazonMQConfigure<TConfigurator, TContainerContext>(TConfigurator configurator, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
-			where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
-			where TContainerContext : class
-		{
-			bool isConsumer = receiveEndpoints?.Any() ?? false;
-
 			var config = ConfigurationHelper.GetConfiguration("eventbussettings.json");
 			string hostName = @config["AmazonMQ:HostName"];
 			string username = @config["AmazonMQ:UserName"];
 			string password = @config["AmazonMQ:Password"];
 
-			if (isConsumer)
-				configurator.AddConsumers(GetConsumers(receiveEndpoints));
-
-			configurator.AddBus(p => Bus.Factory.CreateUsingActiveMq(cfg =>
+			return Bus.Factory.CreateUsingActiveMq(cfg =>
 			{
 				var host = cfg.Host(hostName, h =>
 				{
@@ -190,23 +167,9 @@ namespace MG.EventBus.Startup
 				});
 
 				if (isConsumer)
-					cfg.AddReceiveEndpoints(p, receiveEndpoints);
-			}));
+					cfg.AddReceiveEndpoints(registration, receiveEndpoints);
+			});
 		}
-		
-		private static Container RegisterAmazonMQDependencies(this Container container, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
-		{
-			container.RegisterDependencies(AmazonMQConfigure<ISimpleInjectorConfigurator, Container>, receiveEndpoints);
-			return container;
-		}
-
-		private static IServiceCollection RegisterAmazonMQDependencies(this IServiceCollection services, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
-		{
-			services.RegisterDependencies(AmazonMQConfigure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints);
-			return services;
-		}
-
-		#endregion
 
 		#endregion
 

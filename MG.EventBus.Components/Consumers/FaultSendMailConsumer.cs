@@ -10,10 +10,10 @@ namespace MG.EventBus.Components.Consumers
 		public async Task Consume(ConsumeContext<Fault<SendMail>> context)
 		{
 			// error handling here
-			//	logging, changing status email on DB, etc.
+			//	logging, changing status email into DB, etc.
 
-			await Console.Out.WriteLineAsync($">>> Consuming Fault: ID={context.Message.Message.Id}, Msg='{context.Message.Message.Message}', {context.Message.Exceptions[0].Message}");
-			await Console.Out.WriteLineAsync($"Exception: {context.Message.Exceptions[0].Message}");
+			await Console.Out.WriteLineAsync($">>> Consuming Fault: ID={context.Message.Message.Id}, Msg='{context.Message.Message.Message}', {@context.DestinationAddress.PathAndQuery}");
+			await Console.Out.WriteLineAsync($">>> Exception: {context.Message.Exceptions[0].Message}");
 		}
 	}
 }
