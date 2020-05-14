@@ -12,6 +12,7 @@ using MG.EventBus.Components.Services;
 using MG.EventBus.Components.Services.Impl;
 using MG.EventBus.Startup.Models;
 using MG.IntegrationSystems.Tools;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SimpleInjector;
@@ -30,7 +31,7 @@ namespace MG.EventBus.Startup
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			container.RegisterDependencies(Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, AmazonMQConfigureBus);
+			container.RegisterDependencies(Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, CloudAMQPConfigureBus);
 			return container;
 		}
 
@@ -38,7 +39,7 @@ namespace MG.EventBus.Startup
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			services.RegisterDependencies(Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, AmazonMQConfigureBus);
+			services.RegisterDependencies(Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, CloudAMQPConfigureBus);
 			return services;
 		}
 
@@ -51,9 +52,9 @@ namespace MG.EventBus.Startup
 		private static Container RegisterDependencies(this Container container,
 			Action<ISimpleInjectorConfigurator, 
 				IEnumerable<ReceiveEndpointRegistration>,
-				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl>> configure,
+				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl>> configure,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
-			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl> configureBus)
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl> configureBus)
 		{
 			container.Options.DefaultScopedLifestyle = new AsyncScopedLifestyle();
 			container.Register<IEndpointNameFormatter>(() => KebabCaseEndpointNameFormatter.Instance, Lifestyle.Singleton);
@@ -64,9 +65,9 @@ namespace MG.EventBus.Startup
 		private static IServiceCollection RegisterDependencies(this IServiceCollection services,
 			Action<IServiceCollectionConfigurator,
 				IEnumerable<ReceiveEndpointRegistration>,
-				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl>> configure,
+				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl>> configure,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
-			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl> configureBus)
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl> configureBus)
 		{
 			services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
 			services.AddMassTransit(x => configure(x, receiveEndpoints, configureBus));
@@ -121,9 +122,26 @@ namespace MG.EventBus.Startup
 			}
 		}
 
+		private static (IConfigurationRoot config, bool canUseInMemory) GetConfiguration()
+		{
+			string jsonFileName = "eventbussettings.Production.json";
+			#if DEBUG
+			jsonFileName = "eventbussettings.json";
+			#endif
+			var config = ConfigurationHelper.GetConfiguration(jsonFileName);
+
+			string useInMemoryKey = "UseInMemory";
+			bool canUseInMemory = false;
+
+			if (config.GetSection(useInMemoryKey).Exists())
+				bool.TryParse(config[useInMemoryKey], out canUseInMemory);
+
+			return (config, canUseInMemory);
+		}
+
 		private static void Configure<TConfigurator, TContainerContext>(TConfigurator configurator,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
-			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IBusControl> configureBus)
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl> configureBus)
 				where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
 				where TContainerContext : class
 		{
@@ -132,12 +150,28 @@ namespace MG.EventBus.Startup
 			if (isConsumer)
 				configurator.AddConsumers(GetConsumers(receiveEndpoints));
 
-			configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer));
+			(var config, var canUseInMemory) = GetConfiguration();
+			if (canUseInMemory)
+				configurator.AddBus(p => InMemoryConfigureBus(p));
+			else
+				configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer, config));
 		}
 
-		private static IBusControl CloudAMQPConfigureBus(IRegistration registration, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints, bool isConsumer)
+		/// <summary>
+		/// This stub method is intended for developers who do not use a real AMQP broker.
+		/// </summary>
+		/// <param name="registration">This parameter is needed only to match the signature</param>
+		/// <returns></returns>
+		private static IBusControl InMemoryConfigureBus(IRegistration registration)
 		{
-			var config = ConfigurationHelper.GetConfiguration("eventbussettings.json");
+			return Bus.Factory.CreateUsingInMemory(cfg => { });
+		}
+
+		private static IBusControl CloudAMQPConfigureBus(IRegistration registration,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
+			bool isConsumer,
+			IConfigurationRoot config)
+		{
 			string hostName = @config["CloudAMQP:HostName"];
 			string vhost = @config["CloudAMQP:VirtualHost"];
 			string port = @config["CloudAMQP:Port"];
@@ -162,9 +196,11 @@ namespace MG.EventBus.Startup
 			});
 		}
 
-		private static IBusControl AmazonMQConfigureBus(IRegistration registration, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints, bool isConsumer)
+		private static IBusControl AmazonMQConfigureBus(IRegistration registration,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
+			bool isConsumer,
+			IConfigurationRoot config)
 		{
-			var config = ConfigurationHelper.GetConfiguration("eventbussettings.json");
 			string hostName = @config["AmazonMQ:HostName"];
 			string username = @config["AmazonMQ:UserName"];
 			string password = @config["AmazonMQ:Password"];
