@@ -1,4 +1,5 @@
 ﻿using MG.EventBus.Components.Consumers;
+using MG.EventBus.Components.Models;
 using MG.EventBus.Components.Services;
 using MG.EventBus.Contracts;
 using MG.EventBus.Startup;
@@ -6,11 +7,15 @@ using Microsoft.Extensions.DependencyInjection;
 using SimpleInjector;
 using SimpleInjector.Lifestyles;
 using System;
+using System.Threading.Tasks;
 
 namespace Producer
 {
 	class Program
 	{
+		const string BALK_MARKER = "balk";
+		const string LOW_MARKER = "low";
+
 		static readonly Container _container;
 		static readonly ServiceProvider _serviceProvider;
 
@@ -98,12 +103,32 @@ namespace Producer
 				if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
 					break;
 
+				if (msg.Equals(BALK_MARKER, StringComparison.InvariantCultureIgnoreCase))
+				{
+					Task.Run(async () =>
+					{
+						for (int i = 0; i < 10000; i++)
+						{
+							await producer.SendAsync<SendMail, SendMailConsumer>(new
+							{
+								Id = i,
+								CreatedDate = DateTime.UtcNow,
+								Message = $"{BALK_MARKER}-{i}"
+							}, QueuePriority.Lowest);
+						}
+					});
+					continue;
+				}
+
 				producer.Send<SendMail, SendMailConsumer>(new
 				{
 					Id = random.Next(1, int.MaxValue),
 					CreatedDate = DateTime.UtcNow,
 					Message = msg
-				});
+				} 
+				, msg.Equals(LOW_MARKER, StringComparison.InvariantCultureIgnoreCase)
+					? QueuePriority.Lowest
+					: QueuePriority.Normal);
 
 				producer.Publish<TestSomeActionExecuted>(new
 				{

@@ -10,12 +10,15 @@ using MG.EventBus.Components.Helpers;
 using MG.EventBus.Components.Models;
 using MG.EventBus.Components.Services;
 using MG.EventBus.Components.Services.Impl;
+using MG.EventBus.Startup.Models;
 using MG.IntegrationSystems.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using RabbitMQ.Client.Events;
 using SimpleInjector;
 using SimpleInjector.Lifestyles;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace MG.EventBus.Startup
@@ -24,19 +27,19 @@ namespace MG.EventBus.Startup
 	{
 		#region Private Methods
 
-		private static Container RegisterBrokerDependencies(this Container container, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		private static Container RegisterBrokerDependencies(this Container container, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			container.RegisterCloudAMQPDependencies(queue, canUsePriority, consumers);
+			container.RegisterCloudAMQPDependencies(receiveEndpoints);
 			return container;
 		}
 
-		private static IServiceCollection RegisterBrokerDependencies(this IServiceCollection services, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		private static IServiceCollection RegisterBrokerDependencies(this IServiceCollection services, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			services.RegisterCloudAMQPDependencies(queue, canUsePriority, consumers);
+			services.RegisterCloudAMQPDependencies(receiveEndpoints);
 			return services;
 		}
 
@@ -46,42 +49,57 @@ namespace MG.EventBus.Startup
 		}
 
 		private static Container RegisterDependencies(this Container container,
-			Action<ISimpleInjectorConfigurator, string, bool, Type[]> configure, 
-			string queue = null,
-			bool canUsePriority = false,
-			params Type[] consumers)
+			Action<ISimpleInjectorConfigurator, IEnumerable<ReceiveEndpointRegistration>> configure,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 		{
 			container.Options.DefaultScopedLifestyle = new AsyncScopedLifestyle();
 			container.Register<IEndpointNameFormatter>(() => KebabCaseEndpointNameFormatter.Instance, Lifestyle.Singleton);
-			container.AddMassTransit(x => configure(x, queue, canUsePriority, consumers));
+			container.AddMassTransit(x => configure(x, receiveEndpoints));
 			return container;
 		}
 
 		private static IServiceCollection RegisterDependencies(this IServiceCollection services,
-			Action<IServiceCollectionConfigurator, string, bool, Type[]> configure,
-			string queue = null,
-			bool canUsePriority = false,
-			params Type[] consumers)
+			Action<IServiceCollectionConfigurator, IEnumerable<ReceiveEndpointRegistration>> configure,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 		{
 			services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
-			services.AddMassTransit(x => configure(x, queue, canUsePriority, consumers));
+			services.AddMassTransit(x => configure(x, receiveEndpoints));
 			return services;
 		}
 
-		private static void ReceiveEndpoint(IReceiveEndpointConfigurator configureEndpoint, IRegistration registration)
+		private static Type[] GetConsumers(IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 		{
-			configureEndpoint.UseMessageRetry(RetryPolicy);
-			configureEndpoint.ConfigureConsumers(registration);
+			var result = new List<Type>();
+			foreach (var receiveEndpoint in receiveEndpoints)
+			{
+				result.AddRange(receiveEndpoint.Consumers);
+			}
+			return result.ToArray();
 		}
 
-		private static void AddReceiveEndpoints(this IReceiveConfigurator cfg, IRegistration registration, string queue, bool canUsePriority)
+		private static void ReceiveEndpoint(IReceiveEndpointConfigurator configureEndpoint, IRegistration registration, IEnumerable<Type> consumers)
 		{
-			cfg.ReceiveEndpoint(queue, ec => ReceiveEndpoint(ec, registration));
-
-			if (canUsePriority)
+			configureEndpoint.UseMessageRetry(RetryPolicy);
+			foreach (var consumer in consumers)
 			{
-				cfg.ReceiveEndpoint(queue + QueueHelper.GetQueueNameSuffix(QueuePriority.Lowest), ec => ReceiveEndpoint(ec, registration));
-				cfg.ReceiveEndpoint(queue + QueueHelper.GetQueueNameSuffix(QueuePriority.Highest), ec => ReceiveEndpoint(ec, registration));
+				configureEndpoint.ConfigureConsumer(registration, consumer);
+			}
+		}
+
+		private static void AddReceiveEndpoints(this IReceiveConfigurator cfg, IRegistration registration, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
+		{
+			foreach (var receiveEndpoint in receiveEndpoints)
+			{
+				cfg.ReceiveEndpoint(receiveEndpoint.QueueName, ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers));
+
+				if (receiveEndpoint.CanUsePriority)
+				{
+					cfg.ReceiveEndpoint(receiveEndpoint.QueueName + QueueHelper.GetQueueNameSuffix(QueuePriority.Lowest), 
+						ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers));
+
+					cfg.ReceiveEndpoint(receiveEndpoint.QueueName + QueueHelper.GetQueueNameSuffix(QueuePriority.Highest),
+						ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers));
+				}
 			}
 		}
 
@@ -91,15 +109,12 @@ namespace MG.EventBus.Startup
 		/// CloudAMQP Dependency Registration Extension Method: Producer and Consumers
 		/// </summary>
 		/// <param name="configurator">Configures the container registration: SimpleInjector, Microsoft DependencyInjection, etc.</param>
-		/// <param name="queue">ONLY FOR THE CONSUMER. Name of queue for consumer registration</param>
-		/// <param name="consumers">ONLY FOR THE CONSUMER. An array of consumer types for registering consumers</param>
-		private static void CloudAMQPConfigure<TConfigurator, TContainerContext>(TConfigurator configurator, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		/// <param name="receiveEndpoints">ONLY FOR THE CONSUMERS. Receive Endpoints list</param>
+		private static void CloudAMQPConfigure<TConfigurator, TContainerContext>(TConfigurator configurator, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 			where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
 			where TContainerContext : class
 		{
-			bool isConsumer = !string.IsNullOrEmpty(queue);
-			if (isConsumer && !consumers.Any())
-				throw new ArgumentException("An array of consumer types for registering consumers can't be empty.");
+			bool isConsumer = receiveEndpoints?.Any() ?? false;
 
 			var config = ConfigurationHelper.GetConfiguration("eventbussettings.json");
 			string hostName = @config["CloudAMQP:HostName"];
@@ -109,7 +124,7 @@ namespace MG.EventBus.Startup
 			string password = @config["CloudAMQP:Password"];
 
 			if (isConsumer)
-				configurator.AddConsumers(consumers);
+				configurator.AddConsumers(GetConsumers(receiveEndpoints));
 
 			configurator.AddBus(p => Bus.Factory.CreateUsingRabbitMq(cfg =>
 			{
@@ -125,19 +140,19 @@ namespace MG.EventBus.Startup
 				});
 
 				if (isConsumer)
-					cfg.AddReceiveEndpoints(p, queue, canUsePriority);
+					cfg.AddReceiveEndpoints(p, receiveEndpoints);
 			}));
 		}
 
-		private static Container RegisterCloudAMQPDependencies(this Container container, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		private static Container RegisterCloudAMQPDependencies(this Container container, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 		{
-			container.RegisterDependencies(CloudAMQPConfigure<ISimpleInjectorConfigurator, Container>, queue, canUsePriority, consumers);
+			container.RegisterDependencies(CloudAMQPConfigure<ISimpleInjectorConfigurator, Container>, receiveEndpoints);
 			return container;
 		}
 
-		private static IServiceCollection RegisterCloudAMQPDependencies(this IServiceCollection services, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		private static IServiceCollection RegisterCloudAMQPDependencies(this IServiceCollection services, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 		{
-			services.RegisterDependencies(CloudAMQPConfigure<IServiceCollectionConfigurator, IServiceProvider>, queue, canUsePriority, consumers);
+			services.RegisterDependencies(CloudAMQPConfigure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints);
 			return services;
 		}
 
@@ -149,15 +164,12 @@ namespace MG.EventBus.Startup
 		/// AmazonMQ Dependency Registration Extension Method: Producer and Consumers
 		/// </summary>
 		/// <param name="configurator">Configures the container registration: SimpleInjector, Microsoft DependencyInjection, etc. </param>
-		/// <param name="queue">ONLY FOR THE CONSUMER. Name of queue for consumer registration</param>
-		/// <param name="consumers">ONLY FOR THE CONSUMER. An array of consumer types for registering consumers</param>
-		private static void AmazonMQConfigure<TConfigurator, TContainerContext>(TConfigurator configurator, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		/// <param name="receiveEndpoints">ONLY FOR THE CONSUMERS. Receive Endpoints list</param>
+		private static void AmazonMQConfigure<TConfigurator, TContainerContext>(TConfigurator configurator, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 			where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
 			where TContainerContext : class
 		{
-			bool isConsumer = !string.IsNullOrEmpty(queue);
-			if (isConsumer && !consumers.Any())
-				throw new ArgumentException("An array of consumer types for registering consumers can't be empty.");
+			bool isConsumer = receiveEndpoints?.Any() ?? false;
 
 			var config = ConfigurationHelper.GetConfiguration("eventbussettings.json");
 			string hostName = @config["AmazonMQ:HostName"];
@@ -165,7 +177,7 @@ namespace MG.EventBus.Startup
 			string password = @config["AmazonMQ:Password"];
 
 			if (isConsumer)
-				configurator.AddConsumers(consumers);
+				configurator.AddConsumers(GetConsumers(receiveEndpoints));
 
 			configurator.AddBus(p => Bus.Factory.CreateUsingActiveMq(cfg =>
 			{
@@ -178,19 +190,19 @@ namespace MG.EventBus.Startup
 				});
 
 				if (isConsumer)
-					cfg.AddReceiveEndpoints(p, queue, canUsePriority);
+					cfg.AddReceiveEndpoints(p, receiveEndpoints);
 			}));
 		}
 		
-		private static Container RegisterAmazonMQDependencies(this Container container, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		private static Container RegisterAmazonMQDependencies(this Container container, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 		{
-			container.RegisterDependencies(AmazonMQConfigure<ISimpleInjectorConfigurator, Container>, queue, canUsePriority, consumers);
+			container.RegisterDependencies(AmazonMQConfigure<ISimpleInjectorConfigurator, Container>, receiveEndpoints);
 			return container;
 		}
 
-		private static IServiceCollection RegisterAmazonMQDependencies(this IServiceCollection services, string queue = null, bool canUsePriority = false, params Type[] consumers)
+		private static IServiceCollection RegisterAmazonMQDependencies(this IServiceCollection services, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
 		{
-			services.RegisterDependencies(AmazonMQConfigure<IServiceCollectionConfigurator, IServiceProvider>, queue, canUsePriority, consumers);
+			services.RegisterDependencies(AmazonMQConfigure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints);
 			return services;
 		}
 
@@ -214,20 +226,32 @@ namespace MG.EventBus.Startup
 
 		public static Container RegisterSendMailConsumerDependencies(this Container container) 
 		{
-			container.RegisterBrokerDependencies(
-				queue: QueueHelper.GetQueueName<SendMailConsumer>(),
-				//canUsePriority: true,
-				consumers: new Type[] { typeof(SendMailConsumer), typeof(FaultSendMailConsumer) }
-			);
+			var receiveEndpoints = new List<ReceiveEndpointRegistration>
+			{
+				new ReceiveEndpointRegistration
+				{
+					QueueName = QueueHelper.GetQueueName<SendMailConsumer>(),
+					CanUsePriority = true,
+					Consumers = new List<Type> { typeof(SendMailConsumer), typeof(FaultSendMailConsumer) }
+				}
+			};
+
+			container.RegisterBrokerDependencies(receiveEndpoints);
 			return container;
 		}
 
 		public static Container RegisterTestSomeActionExecutedConsumerDependencies(this Container container)
 		{
-			container.RegisterBrokerDependencies(
-				queue: QueueHelper.GetQueueName<TestSomeActionExecutedConsumer>(),
-				consumers: typeof(TestSomeActionExecutedConsumer)
-			);
+			var receiveEndpoints = new List<ReceiveEndpointRegistration>
+			{
+				new ReceiveEndpointRegistration
+				{
+					QueueName = QueueHelper.GetQueueName<TestSomeActionExecutedConsumer>(),
+					Consumers = new List<Type> { typeof(TestSomeActionExecutedConsumer) }
+				}
+			};
+
+			container.RegisterBrokerDependencies(receiveEndpoints);
 			return container;
 		}
 	}
