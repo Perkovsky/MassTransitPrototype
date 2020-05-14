@@ -44,7 +44,8 @@ namespace MG.EventBus.Startup
 
 		private static void RetryPolicy(IRetryConfigurator retry)
 		{
-			retry.Exponential(5, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(5));
+			//retry.Exponential(5, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(5));
+			retry.Interval(5, TimeSpan.FromSeconds(1));
 		}
 
 		private static Container RegisterDependencies(this Container container,
@@ -78,16 +79,27 @@ namespace MG.EventBus.Startup
 			foreach (var receiveEndpoint in receiveEndpoints)
 			{
 				result.AddRange(receiveEndpoint.Consumers);
+				result.AddRange(receiveEndpoint.FaultConsumers);
 			}
-			return result.ToArray();
+			return result.Distinct().ToArray();
 		}
 
-		private static void ReceiveEndpoint(IReceiveEndpointConfigurator configureEndpoint, IRegistration registration, IEnumerable<Type> consumers)
+		private static void ReceiveEndpoint(IReceiveEndpointConfigurator configureEndpoint,
+			IRegistration registration,
+			IEnumerable<Type> consumers,
+			IEnumerable<Type> faultConsumers = null)
 		{
 			configureEndpoint.UseMessageRetry(RetryPolicy);
+			
 			foreach (var consumer in consumers)
 			{
 				configureEndpoint.ConfigureConsumer(registration, consumer);
+			}
+
+			if (faultConsumers == null) return;
+			foreach (var faultConsumer in faultConsumers)
+			{
+				configureEndpoint.ConfigureConsumer(registration, faultConsumer);
 			}
 		}
 
@@ -95,11 +107,12 @@ namespace MG.EventBus.Startup
 		{
 			foreach (var receiveEndpoint in receiveEndpoints)
 			{
-				cfg.ReceiveEndpoint(receiveEndpoint.QueueName, ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers));
+				cfg.ReceiveEndpoint(receiveEndpoint.QueueName,
+					ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers, receiveEndpoint.FaultConsumers));
 
 				if (receiveEndpoint.CanUsePriority)
 				{
-					cfg.ReceiveEndpoint(receiveEndpoint.QueueName + QueueHelper.GetQueueNameSuffix(QueuePriority.Lowest), 
+					cfg.ReceiveEndpoint(receiveEndpoint.QueueName + QueueHelper.GetQueueNameSuffix(QueuePriority.Lowest),
 						ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers));
 
 					cfg.ReceiveEndpoint(receiveEndpoint.QueueName + QueueHelper.GetQueueNameSuffix(QueuePriority.Highest),
@@ -191,12 +204,12 @@ namespace MG.EventBus.Startup
 		{
 			var receiveEndpoints = new List<ReceiveEndpointRegistration>
 			{
-				new ReceiveEndpointRegistration
-				{
-					QueueName = QueueHelper.GetQueueName<SendMailConsumer>(),
-					CanUsePriority = true,
-					Consumers = new List<Type> { typeof(SendMailConsumer), typeof(FaultSendMailConsumer) }
-				}
+				new ReceiveEndpointRegistration(
+					queueName: QueueHelper.GetQueueName<SendMailConsumer>(),
+					consumers: new List<Type> { typeof(SendMailConsumer) },
+					faultConsumers: new List<Type> { typeof(FaultSendMailConsumer) },
+					canUsePriority: true
+				)
 			};
 
 			container.RegisterBrokerDependencies(receiveEndpoints);
@@ -207,11 +220,10 @@ namespace MG.EventBus.Startup
 		{
 			var receiveEndpoints = new List<ReceiveEndpointRegistration>
 			{
-				new ReceiveEndpointRegistration
-				{
-					QueueName = QueueHelper.GetQueueName<TestSomeActionExecutedConsumer>(),
-					Consumers = new List<Type> { typeof(TestSomeActionExecutedConsumer) }
-				}
+				new ReceiveEndpointRegistration(
+					queueName: QueueHelper.GetQueueName<TestSomeActionExecutedConsumer>(),
+					consumers: new List<Type> { typeof(TestSomeActionExecutedConsumer) }
+				)
 			};
 
 			container.RegisterBrokerDependencies(receiveEndpoints);

@@ -107,17 +107,32 @@ namespace Producer
 				{
 					Task.Run(async () =>
 					{
+						static string GetMessage(int i) => i switch
+						{
+							100 => "error",
+							300 => "warning",
+							_ => $"{BALK_MARKER}-{i}",
+						};
+						
 						for (int i = 0; i < 10000; i++)
 						{
 							await producer.SendAsync<SendMail, SendMailConsumer>(new
 							{
 								Id = i,
 								CreatedDate = DateTime.UtcNow,
-								Message = $"{BALK_MARKER}-{i}"
+								Message = GetMessage(i),
 							}, QueuePriority.Lowest);
 						}
 					});
 					continue;
+				}
+
+				var priority = QueuePriority.Normal;
+				var templateLow = $"->{LOW_MARKER}";
+				if (msg.EndsWith(templateLow, StringComparison.InvariantCultureIgnoreCase))
+				{
+					priority = QueuePriority.Lowest;
+					msg = msg.Replace(templateLow, string.Empty);
 				}
 
 				producer.Send<SendMail, SendMailConsumer>(new
@@ -125,10 +140,7 @@ namespace Producer
 					Id = random.Next(1, int.MaxValue),
 					CreatedDate = DateTime.UtcNow,
 					Message = msg
-				} 
-				, msg.Equals(LOW_MARKER, StringComparison.InvariantCultureIgnoreCase)
-					? QueuePriority.Lowest
-					: QueuePriority.Normal);
+				}, priority);
 
 				producer.Publish<TestSomeActionExecuted>(new
 				{

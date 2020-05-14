@@ -1,4 +1,5 @@
-﻿using MassTransit;
+﻿using GreenPipes;
+using MassTransit;
 using MG.EventBus.Startup;
 using SimpleInjector;
 using Topshelf;
@@ -32,10 +33,23 @@ namespace Consumer.WindowsService
         //            //	s.Protocol = System.Security.Authentication.SslProtocols.Tls12;
         //            //});
 
-        //            cfg.ReceiveEndpoint(/*"EmailQueue", */ec =>
+        //            cfg.ReceiveEndpoint("send-mail", ec =>
         //            {
+        //                ec.UseMessageRetry(retry => retry.Interval(5, 1000));
         //                ec.Consumer<MG.EventBus.Components.Consumers.SendMailConsumer>();
-        //                //ec.Consumer<MG.EventBus.Components.Consumers.TestSomeActionExecutedConsumer>();
+        //                ec.Consumer<MG.EventBus.Components.Consumers.FaultSendMailConsumer>();
+        //            });
+
+        //            cfg.ReceiveEndpoint("send-mail-lowest", ec =>
+        //            {
+        //                ec.UseMessageRetry(retry => retry.Interval(5, 1000));
+        //                ec.Consumer<MG.EventBus.Components.Consumers.SendMailConsumer>();
+        //            });
+
+        //            cfg.ReceiveEndpoint("send-mail-highest", ec =>
+        //            {
+        //                ec.UseMessageRetry(retry => retry.Interval(5, 1000));
+        //                ec.Consumer<MG.EventBus.Components.Consumers.SendMailConsumer>();
         //            });
         //        });
         //    });
