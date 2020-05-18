@@ -11,8 +11,6 @@ using MG.EventBus.Components.Models;
 using MG.EventBus.Components.Services;
 using MG.EventBus.Components.Services.Impl;
 using MG.EventBus.Startup.Models;
-using MG.IntegrationSystems.Tools;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SimpleInjector;
@@ -27,19 +25,23 @@ namespace MG.EventBus.Startup
 	{
 		#region Private Methods
 
-		private static Container RegisterBrokerDependencies(this Container container, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
+		private static Container RegisterBrokerDependencies(this Container container,
+			EventBusSettings settings,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			container.RegisterDependencies(Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, CloudAMQPConfigureBus);
+			container.RegisterDependencies(settings, Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, AmazonMQConfigureBus);
 			return container;
 		}
 
-		private static IServiceCollection RegisterBrokerDependencies(this IServiceCollection services, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
+		private static IServiceCollection RegisterBrokerDependencies(this IServiceCollection services,
+			EventBusSettings settings,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			services.RegisterDependencies(Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, CloudAMQPConfigureBus);
+			services.RegisterDependencies(settings, Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, AmazonMQConfigureBus);
 			return services;
 		}
 
@@ -50,27 +52,31 @@ namespace MG.EventBus.Startup
 		}
 
 		private static Container RegisterDependencies(this Container container,
-			Action<ISimpleInjectorConfigurator, 
+			EventBusSettings settings,
+			Action<ISimpleInjectorConfigurator,
+				EventBusSettings,
 				IEnumerable<ReceiveEndpointRegistration>,
-				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl>> configure,
+				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl>> configure,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
-			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl> configureBus)
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl> configureBus)
 		{
 			container.Options.DefaultScopedLifestyle = new AsyncScopedLifestyle();
 			container.Register<IEndpointNameFormatter>(() => KebabCaseEndpointNameFormatter.Instance, Lifestyle.Singleton);
-			container.AddMassTransit(x => configure(x, receiveEndpoints, configureBus));
+			container.AddMassTransit(x => configure(x, settings, receiveEndpoints, configureBus));
 			return container;
 		}
 
 		private static IServiceCollection RegisterDependencies(this IServiceCollection services,
+			EventBusSettings settings,
 			Action<IServiceCollectionConfigurator,
+				EventBusSettings,
 				IEnumerable<ReceiveEndpointRegistration>,
-				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl>> configure,
+				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl>> configure,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
-			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl> configureBus)
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl> configureBus)
 		{
 			services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
-			services.AddMassTransit(x => configure(x, receiveEndpoints, configureBus));
+			services.AddMassTransit(x => configure(x, settings, receiveEndpoints, configureBus));
 			return services;
 		}
 
@@ -122,26 +128,10 @@ namespace MG.EventBus.Startup
 			}
 		}
 
-		private static (IConfigurationRoot config, bool canUseInMemory) GetConfiguration()
-		{
-			string jsonFileName = "eventbussettings.Production.json";
-			#if DEBUG
-			jsonFileName = "eventbussettings.json";
-			#endif
-			var config = ConfigurationHelper.GetConfiguration(jsonFileName);
-
-			string useInMemoryKey = "UseInMemory";
-			bool canUseInMemory = false;
-
-			if (config.GetSection(useInMemoryKey).Exists())
-				bool.TryParse(config[useInMemoryKey], out canUseInMemory);
-
-			return (config, canUseInMemory);
-		}
-
 		private static void Configure<TConfigurator, TContainerContext>(TConfigurator configurator,
+			EventBusSettings settings,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
-			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, IConfigurationRoot, IBusControl> configureBus)
+			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl> configureBus)
 				where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
 				where TContainerContext : class
 		{
@@ -150,11 +140,10 @@ namespace MG.EventBus.Startup
 			if (isConsumer)
 				configurator.AddConsumers(GetConsumers(receiveEndpoints));
 
-			(var config, var canUseInMemory) = GetConfiguration();
-			if (canUseInMemory)
+			if (settings.UseInMemory)
 				configurator.AddBus(p => InMemoryConfigureBus(p));
 			else
-				configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer, config));
+				configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer, settings));
 		}
 
 		/// <summary>
@@ -170,13 +159,13 @@ namespace MG.EventBus.Startup
 		private static IBusControl CloudAMQPConfigureBus(IRegistration registration,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
 			bool isConsumer,
-			IConfigurationRoot config)
+			EventBusSettings settings)
 		{
-			string hostName = @config["CloudAMQP:HostName"];
-			string vhost = @config["CloudAMQP:VirtualHost"];
-			string port = @config["CloudAMQP:Port"];
-			string username = @config["CloudAMQP:UserName"];
-			string password = @config["CloudAMQP:Password"];
+			string hostName = settings.CloudAMQP?.HostName;
+			string vhost = settings.CloudAMQP?.VirtualHost;
+			string port = settings.CloudAMQP?.Port;
+			string username = settings.CloudAMQP?.UserName;
+			string password = settings.CloudAMQP?.Password;
 
 			return Bus.Factory.CreateUsingRabbitMq(cfg =>
 			{
@@ -199,11 +188,11 @@ namespace MG.EventBus.Startup
 		private static IBusControl AmazonMQConfigureBus(IRegistration registration,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
 			bool isConsumer,
-			IConfigurationRoot config)
+			EventBusSettings settings)
 		{
-			string hostName = @config["AmazonMQ:HostName"];
-			string username = @config["AmazonMQ:UserName"];
-			string password = @config["AmazonMQ:Password"];
+			string hostName = settings.AmazonMQ?.HostName;
+			string username = settings.AmazonMQ?.UserName;
+			string password = settings.AmazonMQ?.Password;
 
 			return Bus.Factory.CreateUsingActiveMq(cfg =>
 			{
@@ -222,21 +211,21 @@ namespace MG.EventBus.Startup
 
 		#endregion
 
-		public static Container RegisterEventBusProducerDependencies(this Container container)
+		public static Container RegisterEventBusProducerDependencies(this Container container, EventBusSettings settings)
 		{
-			container.RegisterBrokerDependencies()
+			container.RegisterBrokerDependencies(settings)
 				.Register<IEventBusProducerService, EventBusProducerService>(Lifestyle.Scoped);
 			return container;
 		}
 
-		public static IServiceCollection RegisterEventBusProducerDependencies(this IServiceCollection services)
+		public static IServiceCollection RegisterEventBusProducerDependencies(this IServiceCollection services, EventBusSettings settings)
 		{
-			services.RegisterBrokerDependencies()
+			services.RegisterBrokerDependencies(settings)
 				.AddScoped<IEventBusProducerService, EventBusProducerService>();
 			return services;
 		}
 
-		public static Container RegisterSendMailConsumerDependencies(this Container container) 
+		public static Container RegisterSendMailConsumerDependencies(this Container container, EventBusSettings settings) 
 		{
 			var receiveEndpoints = new List<ReceiveEndpointRegistration>
 			{
@@ -248,11 +237,11 @@ namespace MG.EventBus.Startup
 				)
 			};
 
-			container.RegisterBrokerDependencies(receiveEndpoints);
+			container.RegisterBrokerDependencies(settings, receiveEndpoints);
 			return container;
 		}
 
-		public static Container RegisterTestSomeActionExecutedConsumerDependencies(this Container container)
+		public static Container RegisterTestSomeActionExecutedConsumerDependencies(this Container container, EventBusSettings settings)
 		{
 			var receiveEndpoints = new List<ReceiveEndpointRegistration>
 			{
@@ -262,7 +251,7 @@ namespace MG.EventBus.Startup
 				)
 			};
 
-			container.RegisterBrokerDependencies(receiveEndpoints);
+			container.RegisterBrokerDependencies(settings, receiveEndpoints);
 			return container;
 		}
 	}

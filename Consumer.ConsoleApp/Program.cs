@@ -1,5 +1,6 @@
 ﻿using MassTransit;
 using MG.EventBus.Startup;
+using Settings.Stub;
 using SimpleInjector;
 using System;
 
@@ -12,7 +13,7 @@ namespace Consumer.ConsoleApp
 		static Program()
 		{
 			container = new Container();
-			container.RegisterTestSomeActionExecutedConsumerDependencies();
+			container.RegisterTestSomeActionExecutedConsumerDependencies(SettingsStub.GetSetting());
 			container.Verify();
 		}
 

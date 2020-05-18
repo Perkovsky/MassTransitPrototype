@@ -18,16 +18,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MG.EventBus.Components\MG.EventBus.Components.csproj" />
-    <ProjectReference Include="..\MG.IntegrationSystems.Tools\MG.IntegrationSystems.Tools.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="eventbussettings.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="eventbussettings.Production.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

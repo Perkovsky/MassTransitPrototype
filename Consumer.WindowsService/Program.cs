@@ -1,6 +1,7 @@
 ﻿using GreenPipes;
 using MassTransit;
 using MG.EventBus.Startup;
+using Settings.Stub;
 using SimpleInjector;
 using Topshelf;
 
@@ -13,7 +14,7 @@ namespace Consumer.WindowsService
         static Program()
         {
             container = new Container();
-            container.RegisterSendMailConsumerDependencies();
+            container.RegisterSendMailConsumerDependencies(SettingsStub.GetSetting());
             container.Verify();
         }
 

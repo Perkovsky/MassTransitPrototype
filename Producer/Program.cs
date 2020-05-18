@@ -4,6 +4,7 @@ using MG.EventBus.Components.Services;
 using MG.EventBus.Contracts;
 using MG.EventBus.Startup;
 using Microsoft.Extensions.DependencyInjection;
+using Settings.Stub;
 using SimpleInjector;
 using SimpleInjector.Lifestyles;
 using System;
@@ -24,7 +25,7 @@ namespace Producer
 			#region SimpleInjector
 
 			//_container = new Container();
-			//_container.RegisterEventBusProducerDependencies();
+			//_container.RegisterEventBusProducerDependencies(SettingsStub.GetSetting());
 			//_container.Verify();
 
 			#endregion
@@ -32,7 +33,7 @@ namespace Producer
 			#region Microsoft DependencyInjection
 
 			_serviceProvider = new ServiceCollection()
-				.RegisterEventBusProducerDependencies()
+				.RegisterEventBusProducerDependencies(SettingsStub.GetSetting())
 				.BuildServiceProvider();
 
 			#endregion
