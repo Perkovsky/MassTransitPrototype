@@ -14,7 +14,7 @@ namespace Producer
 {
 	class Program
 	{
-		const string BALK_MARKER = "balk";
+		const string BULK_MARKER = "bulk";
 		const string LOW_MARKER = "low";
 
 		static readonly Container _container;
@@ -104,7 +104,7 @@ namespace Producer
 				if (msg.Equals("quit", StringComparison.InvariantCultureIgnoreCase))
 					break;
 
-				if (msg.Equals(BALK_MARKER, StringComparison.InvariantCultureIgnoreCase))
+				if (msg.Equals(BULK_MARKER, StringComparison.InvariantCultureIgnoreCase))
 				{
 					Task.Run(async () =>
 					{
@@ -112,10 +112,10 @@ namespace Producer
 						{
 							100 => "error",
 							300 => "warning",
-							_ => $"{BALK_MARKER}-{i}",
+							_ => $"{BULK_MARKER}-{i}",
 						};
 						
-						for (int i = 0; i < 10000; i++)
+						for (int i = 0; i < 100; i++)
 						{
 							await producer.SendAsync<SendMail, SendMailConsumer>(new
 							{

@@ -1,4 +1,6 @@
-﻿using MassTransit;
+﻿using Apache.NMS;
+using MassTransit;
+using MassTransit.ActiveMqTransport;
 using MG.EventBus.Components.Helpers;
 using MG.EventBus.Components.Models;
 using System;
@@ -41,8 +43,21 @@ namespace MG.EventBus.Components.Services.Impl
 			where TContract : class
 			where TConsumer : class, IConsumer<TContract>
 		{
-			var endpoint = await _sendEndpointProvider.GetSendEndpoint(QueueHelper.GetQueueUri<TConsumer>(priority));
-			await endpoint.Send<TContract>(values);
+			var endpoint = await _sendEndpointProvider.GetSendEndpoint(QueueHelper.GetQueueUri<TConsumer>(/*priority*/));
+			await endpoint.Send<TContract>(values, x => x.SetPriority(GetPriority(priority)), cancellationToken);
+		}
+
+		private MsgPriority GetPriority(QueuePriority priority)
+		{
+			switch (priority)
+			{
+				case QueuePriority.Lowest:
+					return MsgPriority.Lowest;
+				case QueuePriority.Highest:
+					return MsgPriority.Highest;
+				default:
+					return MsgPriority.Normal;
+			}
 		}
 	}
 }

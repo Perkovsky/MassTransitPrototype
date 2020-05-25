@@ -97,7 +97,7 @@ namespace MG.EventBus.Startup
 			IEnumerable<Type> faultConsumers = null)
 		{
 			configureEndpoint.UseMessageRetry(RetryPolicy);
-			
+
 			foreach (var consumer in consumers)
 			{
 				configureEndpoint.ConfigureConsumer(registration, consumer);
@@ -114,6 +114,9 @@ namespace MG.EventBus.Startup
 		{
 			foreach (var receiveEndpoint in receiveEndpoints)
 			{
+				//TODO: configure activemq.xml -> destinationPolicy to use queue priority
+				// see: https://activemq.apache.org/how-can-i-support-priority-queues
+
 				cfg.ReceiveEndpoint(receiveEndpoint.QueueName,
 					ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers, receiveEndpoint.FaultConsumers));
 
@@ -232,8 +235,8 @@ namespace MG.EventBus.Startup
 				new ReceiveEndpointRegistration(
 					queueName: QueueHelper.GetQueueName<SendMailConsumer>(),
 					consumers: new List<Type> { typeof(SendMailConsumer) },
-					faultConsumers: new List<Type> { typeof(FaultSendMailConsumer) },
-					canUsePriority: true
+					faultConsumers: new List<Type> { typeof(FaultSendMailConsumer) }
+					//canUsePriority: true
 				)
 			};
 
