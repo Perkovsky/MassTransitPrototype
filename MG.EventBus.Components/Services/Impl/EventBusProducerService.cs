@@ -1,6 +1,4 @@
-﻿using Apache.NMS;
-using MassTransit;
-using MassTransit.ActiveMqTransport;
+﻿using MassTransit;
 using MG.EventBus.Components.Helpers;
 using MG.EventBus.Components.Models;
 using System;
@@ -47,16 +45,16 @@ namespace MG.EventBus.Components.Services.Impl
 			await endpoint.Send<TContract>(values, x => x.SetPriority(GetPriority(priority)), cancellationToken);
 		}
 
-		private MsgPriority GetPriority(QueuePriority priority)
+		private byte GetPriority(QueuePriority priority)
 		{
 			switch (priority)
 			{
 				case QueuePriority.Lowest:
-					return MsgPriority.Lowest;
+					return 1;
 				case QueuePriority.Highest:
-					return MsgPriority.Highest;
+					return 9;
 				default:
-					return MsgPriority.Normal;
+					return 4;
 			}
 		}
 	}

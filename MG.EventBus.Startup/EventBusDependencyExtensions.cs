@@ -4,6 +4,7 @@ using MassTransit;
 using MassTransit.ActiveMqTransport;
 using MassTransit.Definition;
 using MassTransit.ExtensionsDependencyInjectionIntegration;
+using MassTransit.RabbitMqTransport.Configuration;
 using MassTransit.SimpleInjectorIntegration;
 using MG.EventBus.Components.Consumers;
 using MG.EventBus.Components.Helpers;
@@ -31,7 +32,7 @@ namespace MG.EventBus.Startup
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			container.RegisterDependencies(settings, Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, AmazonMQConfigureBus);
+			container.RegisterDependencies(settings, Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, CloudAMQPConfigureBus);
 			return container;
 		}
 
@@ -41,7 +42,7 @@ namespace MG.EventBus.Startup
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			services.RegisterDependencies(settings, Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, AmazonMQConfigureBus);
+			services.RegisterDependencies(settings, Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, CloudAMQPConfigureBus);
 			return services;
 		}
 
@@ -114,11 +115,13 @@ namespace MG.EventBus.Startup
 		{
 			foreach (var receiveEndpoint in receiveEndpoints)
 			{
-				//TODO: configure activemq.xml -> destinationPolicy to use queue priority
-				// see: https://activemq.apache.org/how-can-i-support-priority-queues
+				cfg.ReceiveEndpoint(receiveEndpoint.QueueName, ec =>
+				{
+					//NOTE: if use this code, then the queue has priority support, but the producer can't add the message to the queue
+					//((RabbitMqReceiveEndpointConfiguration)ec).EnablePriority(10);
 
-				cfg.ReceiveEndpoint(receiveEndpoint.QueueName,
-					ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers, receiveEndpoint.FaultConsumers));
+					ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers, receiveEndpoint.FaultConsumers);
+				});
 
 				if (receiveEndpoint.CanUsePriority)
 				{
@@ -172,6 +175,9 @@ namespace MG.EventBus.Startup
 
 			return Bus.Factory.CreateUsingRabbitMq(cfg =>
 			{
+				//NOTE: if use this code, then nothing happens (the queue doesn't have priority support)
+				cfg.EnablePriority(10);
+
 				var host = cfg.Host(new Uri($@"rabbitmq://{hostName}:{port}/{vhost}/"), h =>
 				{
 					h.Username(username);
