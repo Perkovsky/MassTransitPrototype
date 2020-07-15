@@ -97,7 +97,10 @@ namespace MG.EventBus.Startup
 			IEnumerable<Type> faultConsumers = null)
 		{
 			configureEndpoint.UseMessageRetry(RetryPolicy);
-			
+
+			configureEndpoint.DiscardFaultedMessages();
+			configureEndpoint.DiscardSkippedMessages();
+
 			foreach (var consumer in consumers)
 			{
 				configureEndpoint.ConfigureConsumer(registration, consumer);
