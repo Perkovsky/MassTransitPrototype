@@ -1,4 +1,5 @@
 ﻿using MassTransit;
+using MassTransit.Monitoring.Health;
 using MG.EventBus.Components.Helpers;
 using MG.EventBus.Components.Models;
 using System;
@@ -11,11 +12,15 @@ namespace MG.EventBus.Components.Services.Impl
 	{
 		private readonly IPublishEndpoint _publishEndpoint;
 		private readonly ISendEndpointProvider _sendEndpointProvider;
+		private readonly IBusHealth _busHealth;
 
-		public EventBusProducerService(IPublishEndpoint publishEndpoint, ISendEndpointProvider sendEndpointProvider)
+		public EventBusProducerService(IPublishEndpoint publishEndpoint, ISendEndpointProvider sendEndpointProvider, IBusHealth busHealth)
 		{
 			_publishEndpoint = publishEndpoint ?? throw new ArgumentNullException(nameof(publishEndpoint));
 			_sendEndpointProvider = sendEndpointProvider ?? throw new ArgumentNullException(nameof(sendEndpointProvider));
+			_busHealth = busHealth ?? throw new ArgumentNullException(nameof(busHealth));
+
+			var health = _busHealth.CheckHealth();
 		}
 
 		public Task Publish<T>(object values)
@@ -41,6 +46,8 @@ namespace MG.EventBus.Components.Services.Impl
 			where TContract : class
 			where TConsumer : class, IConsumer<TContract>
 		{
+			var health = _busHealth.CheckHealth();
+
 			var endpoint = await _sendEndpointProvider.GetSendEndpoint(QueueHelper.GetQueueUri<TConsumer>(priority));
 			await endpoint.Send<TContract>(values);
 		}

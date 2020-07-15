@@ -13,11 +13,14 @@ using MG.EventBus.Components.Services.Impl;
 using MG.EventBus.Startup.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using SimpleInjector;
 using SimpleInjector.Lifestyles;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace MG.EventBus.Startup
 {
@@ -143,7 +146,63 @@ namespace MG.EventBus.Startup
 			if (settings.UseInMemory)
 				configurator.AddBus(p => InMemoryConfigureBus(p));
 			else
-				configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer, settings));
+			//configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer, settings));
+
+			#region AmazonMQ testing Health Check
+
+			{
+				string hostName = settings.AmazonMQ?.HostName;
+				string username = settings.AmazonMQ?.UserName;
+				string password = settings.AmazonMQ?.Password;
+
+				configurator.AddBus(bus =>
+					Bus.Factory.CreateUsingActiveMq(cfg =>
+					{
+						var host = cfg.Host(hostName, h =>
+						{
+							h.Username(username);
+							h.Password(password);
+						});
+
+						cfg.UseHealthCheck(bus);
+						cfg.UseExceptionLogger();
+						//cfg.SetLoggerFactory(log);
+
+						if (isConsumer)
+							cfg.AddReceiveEndpoints(bus, receiveEndpoints);
+					})
+				);
+			}
+
+			#endregion
+
+			#region CloudAMQP testing Health Check
+
+			//{
+			//	string hostName = settings.CloudAMQP?.HostName;
+			//	string vhost = settings.CloudAMQP?.VirtualHost;
+			//	string port = settings.CloudAMQP?.Port;
+			//	string username = settings.CloudAMQP?.UserName;
+			//	string password = settings.CloudAMQP?.Password;
+
+			//	configurator.AddBus(bus =>
+			//		Bus.Factory.CreateUsingRabbitMq(cfg =>
+			//		{
+			//			var host = cfg.Host(new Uri($@"rabbitmq://{hostName}:{port}/{vhost}/"), h =>
+			//			{
+			//				h.Username(username);
+			//				h.Password(password);
+			//			});
+
+			//			cfg.UseHealthCheck(bus);
+
+			//			if (isConsumer)
+			//				cfg.AddReceiveEndpoints(bus, receiveEndpoints);
+			//		})
+			//	);
+			//}
+
+			#endregion
 		}
 
 		/// <summary>
@@ -255,4 +314,77 @@ namespace MG.EventBus.Startup
 			return container;
 		}
 	}
+
+
+	#region ExceptionLogger Middleware for Testing
+
+	public static class ExampleMiddlewareConfiguratorExtensions
+	{
+		public static void UseExceptionLogger<T>(this IPipeConfigurator<T> configurator)
+			where T : class, PipeContext
+		{
+			configurator.AddPipeSpecification(new ExceptionLoggerSpecification<T>());
+		}
+	}
+
+	public class ExceptionLoggerSpecification<T> :
+		IPipeSpecification<T>
+		where T : class, PipeContext
+	{
+		public IEnumerable<ValidationResult> Validate()
+		{
+			return Enumerable.Empty<ValidationResult>();
+		}
+
+		public void Apply(IPipeBuilder<T> builder)
+		{
+			builder.AddFilter(new ExceptionLoggerFilter<T>());
+		}
+	}
+
+	public class ExceptionLoggerFilter<T> :
+		IFilter<T>
+		where T : class, PipeContext
+	{
+		long _exceptionCount;
+		long _successCount;
+		long _attemptCount;
+
+		public void Probe(ProbeContext context)
+		{
+			var scope = context.CreateFilterScope("exceptionLogger");
+			scope.Add("attempted", _attemptCount);
+			scope.Add("succeeded", _successCount);
+			scope.Add("faulted", _exceptionCount);
+		}
+
+		/// <summary>
+		/// Send is called for each context that is sent through the pipeline
+		/// </summary>
+		/// <param name="context">The context sent through the pipeline</param>
+		/// <param name="next">The next filter in the pipe, must be called or the pipe ends here</param>
+		public async Task Send(T context, IPipe<T> next)
+		{
+			try
+			{
+				Interlocked.Increment(ref _attemptCount);
+
+				// here the next filter in the pipe is called
+				await next.Send(context);
+
+				Interlocked.Increment(ref _successCount);
+			}
+			catch (Exception ex)
+			{
+				Interlocked.Increment(ref _exceptionCount);
+
+				await Console.Out.WriteLineAsync($"An exception occurred: {ex.Message}");
+
+				// propagate the exception up the call stack
+				//throw;
+			}
+		}
+	}
+
+	#endregion
 }
