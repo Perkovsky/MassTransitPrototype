@@ -14,7 +14,7 @@ namespace Consumer.WindowsService
         static Program()
         {
             container = new Container();
-            container.RegisterSendMailConsumerDependencies(SettingsStub.GetSetting());
+            container.RegisterSendMailConsumerDependencies(SettingsStub.GetSetting(), null);
             container.Verify();
         }
 

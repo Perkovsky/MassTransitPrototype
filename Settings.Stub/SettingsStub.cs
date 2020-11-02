@@ -1,4 +1,5 @@
 ﻿using MG.EventBus.Startup.Models;
+using System.Collections.Generic;
 
 namespace Settings.Stub
 {
@@ -21,7 +22,8 @@ namespace Settings.Stub
 				{
 					UserName = "admin",
 					Password = "admin",
-					HostName = "localhost"
+					HostNames =  new List<string> { "localhost" },
+					Port = 61616
 				}
 			};
 		}

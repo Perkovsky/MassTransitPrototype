@@ -13,7 +13,7 @@ namespace Consumer.ConsoleApp
 		static Program()
 		{
 			container = new Container();
-			container.RegisterTestSomeActionExecutedConsumerDependencies(SettingsStub.GetSetting());
+			container.RegisterTestSomeActionExecutedConsumerDependencies(SettingsStub.GetSetting(), null);
 			container.Verify();
 		}
 

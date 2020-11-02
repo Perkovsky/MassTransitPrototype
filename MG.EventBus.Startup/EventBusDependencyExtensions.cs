@@ -18,6 +18,8 @@ using SimpleInjector.Lifestyles;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Authentication;
+using System.Threading.Tasks;
 
 namespace MG.EventBus.Startup
 {
@@ -25,36 +27,48 @@ namespace MG.EventBus.Startup
 	{
 		#region Private Methods
 
+		private static readonly Func<Exception, string, string, Task> _mockErrorNotifier = async (e, s, d) => await Task.CompletedTask;
+
 		private static Container RegisterBrokerDependencies(this Container container,
 			EventBusSettings settings,
+			Func<Exception, string, string, Task> errorNotifier,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			container.RegisterDependencies(settings, Configure<ISimpleInjectorConfigurator, Container>, receiveEndpoints, AmazonMQConfigureBus);
+			container.RegisterDependencies(settings, errorNotifier, Configure<ISimpleInjectorBusConfigurator, Container>, receiveEndpoints, AmazonMQConfigureBus);
 			return container;
 		}
 
 		private static IServiceCollection RegisterBrokerDependencies(this IServiceCollection services,
 			EventBusSettings settings,
+			Func<Exception, string, string, Task> errorNotifier,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints = null)
 		{
 			// CHANGE THE BROKER HERE. SEE ALSO ALL OVERLOADED EXTENDED METHODS
 
-			services.RegisterDependencies(settings, Configure<IServiceCollectionConfigurator, IServiceProvider>, receiveEndpoints, AmazonMQConfigureBus);
+			services.RegisterDependencies(settings, errorNotifier, Configure<IServiceCollectionBusConfigurator, IServiceProvider>, receiveEndpoints, AmazonMQConfigureBus);
 			return services;
 		}
 
-		private static void RetryPolicy(IRetryConfigurator retry)
+		private static void RetryPolicy(IRetryConfigurator retry, RetryPolicySettings retryPolicy)
 		{
-			//retry.Exponential(5, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(5));
-			retry.Interval(5, TimeSpan.FromSeconds(1));
+			//retry.ConnectRetryObserver(new RetryObserver());
+#if DEBUG
+			retry.Interval(5, TimeSpan.FromSeconds(10));
+#else
+			int retryCount = retryPolicy?.RetryCount > 0 ? retryPolicy.RetryCount : 5;
+			int interval = retryPolicy?.Interval > 0 ? retryPolicy.Interval : 5;
+			retry.Interval(retryCount, TimeSpan.FromMinutes(interval));
+#endif
 		}
 
 		private static Container RegisterDependencies(this Container container,
 			EventBusSettings settings,
-			Action<ISimpleInjectorConfigurator,
+			Func<Exception, string, string, Task> errorNotifier,
+			Action<ISimpleInjectorBusConfigurator,
 				EventBusSettings,
+				Func<Exception, string, string, Task>,
 				IEnumerable<ReceiveEndpointRegistration>,
 				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl>> configure,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
@@ -62,21 +76,23 @@ namespace MG.EventBus.Startup
 		{
 			container.Options.DefaultScopedLifestyle = new AsyncScopedLifestyle();
 			container.Register<IEndpointNameFormatter>(() => KebabCaseEndpointNameFormatter.Instance, Lifestyle.Singleton);
-			container.AddMassTransit(x => configure(x, settings, receiveEndpoints, configureBus));
+			container.AddMassTransit(x => configure(x, settings, errorNotifier, receiveEndpoints, configureBus));
 			return container;
 		}
 
 		private static IServiceCollection RegisterDependencies(this IServiceCollection services,
 			EventBusSettings settings,
-			Action<IServiceCollectionConfigurator,
+			Func<Exception, string, string, Task> errorNotifier,
+			Action<IServiceCollectionBusConfigurator,
 				EventBusSettings,
+				Func<Exception, string, string, Task>,
 				IEnumerable<ReceiveEndpointRegistration>,
 				Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl>> configure,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
 			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl> configureBus)
 		{
 			services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
-			services.AddMassTransit(x => configure(x, settings, receiveEndpoints, configureBus));
+			services.AddMassTransit(x => configure(x, settings, errorNotifier, receiveEndpoints, configureBus));
 			return services;
 		}
 
@@ -93,10 +109,23 @@ namespace MG.EventBus.Startup
 
 		private static void ReceiveEndpoint(IReceiveEndpointConfigurator configureEndpoint,
 			IRegistration registration,
+			RetryPolicySettings retryPolicy,
 			IEnumerable<Type> consumers,
-			IEnumerable<Type> faultConsumers = null)
+			IEnumerable<Type> faultConsumers = null,
+			int? concurrencyLimit = null)
 		{
-			configureEndpoint.UseMessageRetry(RetryPolicy);
+			((IActiveMqReceiveEndpointConfigurator)configureEndpoint).PrefetchCount = 30;
+
+			if (retryPolicy != null)
+				configureEndpoint.UseMessageRetry(retry => RetryPolicy(retry, retryPolicy));
+
+			configureEndpoint.ConfigureConsumeTopology = false;
+
+			configureEndpoint.DiscardFaultedMessages();
+			configureEndpoint.DiscardSkippedMessages();
+
+			if (concurrencyLimit.HasValue)
+				configureEndpoint.UseConcurrencyLimit(concurrencyLimit.Value);
 
 			foreach (var consumer in consumers)
 			{
@@ -110,32 +139,33 @@ namespace MG.EventBus.Startup
 			}
 		}
 
-		private static void AddReceiveEndpoints(this IReceiveConfigurator cfg, IRegistration registration, IEnumerable<ReceiveEndpointRegistration> receiveEndpoints)
+		private static void AddReceiveEndpoints(this IReceiveConfigurator cfg,
+			IRegistration registration,
+			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
+			RetryPolicySettings retryPolicy)
 		{
 			foreach (var receiveEndpoint in receiveEndpoints)
 			{
-				//TODO: configure activemq.xml -> destinationPolicy to use queue priority
-				// see: https://activemq.apache.org/how-can-i-support-priority-queues
-
 				cfg.ReceiveEndpoint(receiveEndpoint.QueueName,
-					ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers, receiveEndpoint.FaultConsumers));
+					ec => ReceiveEndpoint(ec, registration, retryPolicy, receiveEndpoint.Consumers, receiveEndpoint.FaultConsumers));
 
 				if (receiveEndpoint.CanUsePriority)
 				{
 					cfg.ReceiveEndpoint(receiveEndpoint.QueueName + QueueHelper.GetQueueNameSuffix(QueuePriority.Lowest),
-						ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers));
+						ec => ReceiveEndpoint(ec, registration, retryPolicy, receiveEndpoint.Consumers));
 
 					cfg.ReceiveEndpoint(receiveEndpoint.QueueName + QueueHelper.GetQueueNameSuffix(QueuePriority.Highest),
-						ec => ReceiveEndpoint(ec, registration, receiveEndpoint.Consumers));
+						ec => ReceiveEndpoint(ec, registration, retryPolicy, receiveEndpoint.Consumers));
 				}
 			}
 		}
 
 		private static void Configure<TConfigurator, TContainerContext>(TConfigurator configurator,
 			EventBusSettings settings,
+			Func<Exception, string, string, Task> errorNotifier,
 			IEnumerable<ReceiveEndpointRegistration> receiveEndpoints,
 			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl> configureBus)
-				where TConfigurator : class, IRegistrationConfigurator<TContainerContext>, IRegistrationConfigurator
+				where TConfigurator : class, IBusRegistrationConfigurator, IRegistrationConfigurator
 				where TContainerContext : class
 		{
 			bool isConsumer = receiveEndpoints?.Any() ?? false;
@@ -146,7 +176,14 @@ namespace MG.EventBus.Startup
 			if (settings.UseInMemory)
 				configurator.AddBus(p => InMemoryConfigureBus(p));
 			else
-				configurator.AddBus(p => configureBus(p, receiveEndpoints, isConsumer, settings));
+				configurator.AddBus(p => {
+					var bus = configureBus(p, receiveEndpoints, isConsumer, settings);
+					//bus.ConnectReceiveEndpointObserver(new ReceiveEndpointObserver(errorNotifier));
+					//bus.ConnectReceiveObserver(new ReceiveObserver());
+					//bus.ConnectPublishObserver(new PublishObserver());
+					//bus.ConnectSendObserver(new SendObserver());
+					return bus;
+				});
 		}
 
 		/// <summary>
@@ -172,7 +209,7 @@ namespace MG.EventBus.Startup
 
 			return Bus.Factory.CreateUsingRabbitMq(cfg =>
 			{
-				var host = cfg.Host(new Uri($@"rabbitmq://{hostName}:{port}/{vhost}/"), h =>
+				cfg.Host(new Uri($@"rabbitmq://{hostName}:{port}/{vhost}/"), h =>
 				{
 					h.Username(username);
 					h.Password(password);
@@ -184,7 +221,7 @@ namespace MG.EventBus.Startup
 				});
 
 				if (isConsumer)
-					cfg.AddReceiveEndpoints(registration, receiveEndpoints);
+					cfg.AddReceiveEndpoints(registration, receiveEndpoints, settings.RetryPolicy);
 			});
 		}
 
@@ -193,58 +230,71 @@ namespace MG.EventBus.Startup
 			bool isConsumer,
 			EventBusSettings settings)
 		{
-			string hostName = settings.AmazonMQ?.HostName;
+			string[] hostNames = settings.AmazonMQ?.HostNames?.ToArray();
 			string username = settings.AmazonMQ?.UserName;
 			string password = settings.AmazonMQ?.Password;
+			int? port = settings.AmazonMQ?.Port;
+
+			if (hostNames == null || hostNames.Length < 1 || string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password) || !port.HasValue)
+				throw new InvalidCredentialException("AmazonMQ credentials in a wrong state");
 
 			return Bus.Factory.CreateUsingActiveMq(cfg =>
 			{
-				var host = cfg.Host(hostName, h =>
+				cfg.Host(hostNames[0], port.Value, h =>
 				{
 					h.Username(username);
 					h.Password(password);
 
 					//h.UseSsl();
+
+					if (hostNames.Length > 1)
+						h.FailoverHosts(hostNames);
 				});
 
 				if (isConsumer)
-					cfg.AddReceiveEndpoints(registration, receiveEndpoints);
+					cfg.AddReceiveEndpoints(registration, receiveEndpoints, settings.RetryPolicy);
 			});
 		}
 
 		#endregion
 
-		public static Container RegisterEventBusProducerDependencies(this Container container, EventBusSettings settings)
+		public static Container RegisterEventBusProducerDependencies(this Container container,
+			EventBusSettings settings)
 		{
-			container.RegisterBrokerDependencies(settings)
+			container.RegisterBrokerDependencies(settings, _mockErrorNotifier)
 				.Register<IEventBusProducerService, EventBusProducerService>(Lifestyle.Scoped);
 			return container;
 		}
 
-		public static IServiceCollection RegisterEventBusProducerDependencies(this IServiceCollection services, EventBusSettings settings)
+		public static IServiceCollection RegisterEventBusProducerDependencies(this IServiceCollection services,
+			EventBusSettings settings)
 		{
-			services.RegisterBrokerDependencies(settings)
+			services.RegisterBrokerDependencies(settings, _mockErrorNotifier)
 				.AddScoped<IEventBusProducerService, EventBusProducerService>();
 			return services;
 		}
 
-		public static Container RegisterSendMailConsumerDependencies(this Container container, EventBusSettings settings) 
+		public static Container RegisterSendMailConsumerDependencies(this Container container,
+			EventBusSettings settings,
+			Func<Exception, string, string, Task> errorNotifier)
 		{
 			var receiveEndpoints = new List<ReceiveEndpointRegistration>
 			{
 				new ReceiveEndpointRegistration(
 					queueName: QueueHelper.GetQueueName<SendMailConsumer>(),
-					consumers: new List<Type> { typeof(SendMailConsumer) },
-					faultConsumers: new List<Type> { typeof(FaultSendMailConsumer) }
+					consumers: new List<Type> { typeof(SendMailConsumer) }
+					//faultConsumers: new List<Type> { typeof(FaultSendMailConsumer) },
 					//canUsePriority: true
 				)
 			};
 
-			container.RegisterBrokerDependencies(settings, receiveEndpoints);
+			container.RegisterBrokerDependencies(settings, errorNotifier, receiveEndpoints);
 			return container;
 		}
 
-		public static Container RegisterTestSomeActionExecutedConsumerDependencies(this Container container, EventBusSettings settings)
+		public static Container RegisterTestSomeActionExecutedConsumerDependencies(this Container container,
+			EventBusSettings settings,
+			Func<Exception, string, string, Task> errorNotifier)
 		{
 			var receiveEndpoints = new List<ReceiveEndpointRegistration>
 			{
@@ -254,7 +304,7 @@ namespace MG.EventBus.Startup
 				)
 			};
 
-			container.RegisterBrokerDependencies(settings, receiveEndpoints);
+			container.RegisterBrokerDependencies(settings, errorNotifier, receiveEndpoints);
 			return container;
 		}
 	}
