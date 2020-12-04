@@ -76,7 +76,11 @@ namespace MG.EventBus.Startup
 		{
 			container.Options.DefaultScopedLifestyle = new AsyncScopedLifestyle();
 			container.Register<IEndpointNameFormatter>(() => KebabCaseEndpointNameFormatter.Instance, Lifestyle.Singleton);
-			container.AddMassTransit(x => configure(x, settings, errorNotifier, receiveEndpoints, configureBus));
+			container.AddMassTransit(x =>
+			{
+				x.AddActiveMqMessageScheduler();
+				configure(x, settings, errorNotifier, receiveEndpoints, configureBus);
+			});
 			return container;
 		}
 
@@ -92,7 +96,11 @@ namespace MG.EventBus.Startup
 			Func<IRegistration, IEnumerable<ReceiveEndpointRegistration>, bool, EventBusSettings, IBusControl> configureBus)
 		{
 			services.TryAddSingleton(KebabCaseEndpointNameFormatter.Instance);
-			services.AddMassTransit(x => configure(x, settings, errorNotifier, receiveEndpoints, configureBus));
+			services.AddMassTransit(x =>
+			{
+				x.AddActiveMqMessageScheduler();
+				configure(x, settings, errorNotifier, receiveEndpoints, configureBus);
+			});
 			return services;
 		}
 
@@ -116,10 +124,10 @@ namespace MG.EventBus.Startup
 		{
 			((IActiveMqReceiveEndpointConfigurator)configureEndpoint).PrefetchCount = 30;
 
-			if (retryPolicy != null)
-				configureEndpoint.UseMessageRetry(retry => RetryPolicy(retry, retryPolicy));
+			//if (retryPolicy != null)
+			//	configureEndpoint.UseMessageRetry(retry => RetryPolicy(retry, retryPolicy));
 
-			configureEndpoint.ConfigureConsumeTopology = false;
+			//configureEndpoint.ConfigureConsumeTopology = false;
 
 			configureEndpoint.DiscardFaultedMessages();
 			configureEndpoint.DiscardSkippedMessages();
@@ -240,6 +248,8 @@ namespace MG.EventBus.Startup
 
 			return Bus.Factory.CreateUsingActiveMq(cfg =>
 			{
+				cfg.UseActiveMqMessageScheduler();
+
 				cfg.Host(hostNames[0], port.Value, h =>
 				{
 					h.Username(username);
@@ -282,8 +292,8 @@ namespace MG.EventBus.Startup
 			{
 				new ReceiveEndpointRegistration(
 					queueName: QueueHelper.GetQueueName<SendMailConsumer>(),
-					consumers: new List<Type> { typeof(SendMailConsumer) }
-					//faultConsumers: new List<Type> { typeof(FaultSendMailConsumer) },
+					consumers: new List<Type> { typeof(SendMailConsumer) },
+					faultConsumers: new List<Type> { typeof(FaultSendMailConsumer) }
 					//canUsePriority: true
 				)
 			};
