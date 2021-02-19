@@ -23,7 +23,7 @@ namespace MG.EventBus.Components.Consumers
 			if (context.Message.Message.Equals(WARNING_MARKER, StringComparison.InvariantCultureIgnoreCase) && context.GetRetryAttempt() < 3)
 				throw new Exception(WARNING_MARKER);
 
-			await Console.Out.WriteLineAsync($"Received: ID={context.Message.Id}, Msg='{context.Message.Message}', {context.Message.CreatedDate}, {@context.DestinationAddress.PathAndQuery}");
+			await Console.Out.WriteLineAsync($"[{DateTime.Now}] - Received: ID={context.Message.Id}, Msg='{context.Message.Message}', {context.Message.CreatedDate}, {@context.DestinationAddress.PathAndQuery}");
 		}
 	}
 }
