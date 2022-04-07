@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MassTransit" Version="6.3.1" />
+    <ProjectReference Include="..\..\MG.Shared\MG.Shared.EventBus\MG.Shared.EventBus.csproj" />
   </ItemGroup>
 
 </Project>

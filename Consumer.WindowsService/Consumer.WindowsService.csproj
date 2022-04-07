@@ -9,9 +9,4 @@
     <PackageReference Include="Topshelf" Version="4.2.1" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\MG.EventBus.Startup\MG.EventBus.Startup.csproj" />
-    <ProjectReference Include="..\Settings.Stub\Settings.Stub.csproj" />
-  </ItemGroup>
-
 </Project>
