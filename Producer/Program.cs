@@ -21,7 +21,7 @@ namespace Producer
                 {
                     UserName = "admin",
                     Password = "admin",
-                    HostNames =  new string[] {"localhost"},
+                    HostNames =  new[] {"localhost"},
                     Port = 61616
                 };
             }

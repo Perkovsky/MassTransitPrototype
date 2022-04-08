@@ -5,11 +5,11 @@ using System.Threading.Tasks;
 
 namespace Consumer.WindowsService
 {
-	public class Consumer
+	public class Worker
 	{
 		private readonly IBusControl _bus;
 
-		public Consumer(IBusControl bus)
+		public Worker(IBusControl bus)
 		{
 			_bus = bus ?? throw new ArgumentNullException(nameof(bus));
 		}
