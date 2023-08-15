@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using CommonLibraries.Services;
-using Consumer.WindowsService.Consumers;
+using Consumer3.WindowsService.Consumers;
 using Contracts;
 using MassTransit;
 using MG.Shared.EventBus.Extensions;
@@ -10,10 +10,10 @@ using MG.Shared.EventBus.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Topshelf;
 
-namespace Consumer.WindowsService
+namespace Consumer3.WindowsService
 {
-	class Program
-	{
+    class Program
+    {
         static readonly ServiceProvider ServiceProvider;
 
         static Program()
@@ -33,13 +33,8 @@ namespace Consumer.WindowsService
             var receiveEndpoints = new List<ReceiveEndpointRegistration>
             {
                 new ReceiveEndpointRegistration(
-                    queueName: QueueBuilder.GetQueueName<SendEmail>(),
-                    consumers: new List<Type> { typeof(SendEmailConsumer) },
-                    canUsePriority: true
-                ),
-                new ReceiveEndpointRegistration(
                     queueName: QueueBuilder.GetQueueName<UserUpdated>(),
-                    consumers: new List<Type> { typeof(UserUpdatedConsumer) }
+                    consumers: new List<Type> { typeof(UserUpdated3Consumer) }
                 ),
             };
 
@@ -64,9 +59,9 @@ namespace Consumer.WindowsService
                 });
                 x.RunAsLocalSystem();
 
-                x.SetDescription("Consumer Windows Service Prototype");
-                x.SetDisplayName("Consumer Windows Service");
-                x.SetServiceName("Consumer Windows Service");
+                x.SetDescription("Consumer 3 Windows Service Prototype");
+                x.SetDisplayName("Consumer 3 Windows Service");
+                x.SetServiceName("Consumer 3 Windows Service");
             });
         }
     }

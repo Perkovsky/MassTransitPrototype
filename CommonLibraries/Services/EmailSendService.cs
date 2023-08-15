@@ -1,7 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
-
-namespace Consumer.WindowsService.Services
+﻿namespace CommonLibraries.Services
 {
     public class EmailSendService : IEmailSendService
     {

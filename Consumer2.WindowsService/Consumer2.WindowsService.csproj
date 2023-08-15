@@ -12,8 +12,9 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\MG.Shared\MG.Shared.EventBus\MG.Shared.EventBus.csproj" />
-		<ProjectReference Include="..\CommonLibraries\CommonLibraries.csproj" />
 		<ProjectReference Include="..\Contracts\Contracts.csproj" />
+		<ProjectReference Include="..\CommonLibraries\CommonLibraries.csproj" />
 	</ItemGroup>
 
 </Project>
+

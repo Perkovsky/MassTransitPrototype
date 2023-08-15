@@ -1,6 +1,6 @@
 ﻿using MG.Shared.EventBus.Models;
 
-namespace Consumer.WindowsService.Services
+namespace CommonLibraries.Services
 {
     public class SystemSettingsAccessor : ISystemSettingsAccessor
     {

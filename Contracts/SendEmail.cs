@@ -1,4 +1,4 @@
-﻿using MG.Shared.EventBus;
+﻿using MG.Shared.EventBus.Abstractions;
 
 namespace Contracts
 {

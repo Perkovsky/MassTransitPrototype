@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
@@ -12,8 +12,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\MG.Shared\MG.Shared.EventBus\MG.Shared.EventBus.csproj" />
-		<ProjectReference Include="..\CommonLibraries\CommonLibraries.csproj" />
 		<ProjectReference Include="..\Contracts\Contracts.csproj" />
+		<ProjectReference Include="..\CommonLibraries\CommonLibraries.csproj" />
 	</ItemGroup>
 
 </Project>

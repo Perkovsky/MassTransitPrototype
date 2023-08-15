@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Contracts;
+using MG.Shared.EventBus.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using MG.Shared.EventBus.Extensions;
 using MG.Shared.EventBus.Infrastructure;
 using MG.Shared.EventBus.Models;
-using MG.Shared.EventBus.Services;
 
 namespace Producer
 {
@@ -56,7 +56,7 @@ namespace Producer
 
                 if (msg.Equals("send-highest", StringComparison.InvariantCultureIgnoreCase) || msg.Equals("sh", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    await producer.SendAsync(new SendEmail { Email = "user@example.com", Text = "Send some text in the highest priority" }, QueuePriority.Highest);
+                    await producer.SendAsync(new SendEmail { Email = "user@example.com", Text = "Send some text in the highest priority" }, priority: QueuePriority.Highest);
                     continue;
                 }
 
